@@ -4,12 +4,15 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.impl.DefaultCamelContext;
+import org.apache.camel.model.dataformat.BindyType;
+import org.apache.camel.model.dataformat.JsonLibrary;
 import org.apache.camel.model.rest.RestBindingMode;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.online.assignment.camelbootservice2.models.User;
+import com.online.assignment.camelbootservice2.models.bindy.UserDataCsvRecords;
 import com.online.assignment.camelbootservice2.service.UserDeEncryptionData;
 
 import static javax.ws.rs.core.MediaType.APPLICATION_JSON;
@@ -107,13 +110,16 @@ public class UserExposeRoute extends RouteBuilder {
             .log("${body}")
             .unmarshal(userDeEncryptionData.createEncryptor())
             .log("${body}")
-            .transform().body(String.class)
+            .unmarshal().json(JsonLibrary.Jackson, User.class)
             .choice()
-                .when(simple("${headers.fileType} == 'xml'"))
+                .when(simple("${headers.fileType} == 'XML'"))
                     .log("XML FILE")
                     .to("file:files/output?fileName=userdata.xml")
                 .otherwise()
                     .log("CSV FILE")
+                    .bean("userFileProcessor", "convertResponseObjectToBindyFormat")
+                    .marshal()
+                        .bindy(BindyType.Csv, UserDataCsvRecords.class)
                     .to("file:files/output?fileName=userdata.csv")
             .end()
             .removeHeaders("*", HTTP_RESPONSE_CODE, CONTENT_TYPE);
@@ -125,6 +131,18 @@ public class UserExposeRoute extends RouteBuilder {
                 .id(ROUTE_END)
             .end()
             .log(LoggingLevel.INFO, "Update User Details request received for File Type : ${headers." + FILE_TYPE + "}")
+            .log("${body}")
+            .unmarshal(userDeEncryptionData.createEncryptor())
+            .log("${body}")
+            .transform().body(String.class)
+            .choice()
+                .when(simple("${headers.fileType} == 'XML'"))
+                    .log("XML FILE")
+                    .to("file:files/output?fileName=userdata.xml")
+                .otherwise()
+                    .log("CSV FILE").marshal().csv()
+                    .to("file:files/output?fileName=userdata.csv")
+            .end()
             .removeHeaders("*", HTTP_RESPONSE_CODE, CONTENT_TYPE);
 
         }
