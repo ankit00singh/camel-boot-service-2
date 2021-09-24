@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.online.assignment.camelbootservice2.models.User;
+import com.online.assignment.camelbootservice2.models.UserList;
 import com.online.assignment.camelbootservice2.models.bindy.UserDataCsvRecords;
 import com.online.assignment.camelbootservice2.service.UserDeEncryptionData;
 
@@ -79,16 +80,8 @@ public class UserExposeRoute extends RouteBuilder {
             .produces(APPLICATION_JSON)
             .responseMessage().code(200).message("The Get User Details model").responseModel(User.class).endResponseMessage()
             .description("Get User details from file")
-            .outType(User.class)
-            .to("direct:getUserDetails")
-
-            .put(updateUserResourcePath + "?" +  FILE_TYPE + "={" + FILE_TYPE + "}")
-            .consumes(APPLICATION_JSON).produces(APPLICATION_JSON)
-            .param().name(FILE_TYPE).type(path).description("Input File Type").dataType("string").endParam()
-            .responseMessage().code(200).message("Update User Response model").responseModel(User.class).endResponseMessage()
-            .description("Update User details to file")
-            .outType(User.class)
-            .to("direct:updateUserDetails");
+            .outType(UserList.class)
+            .to("direct:getUserDetails");
 
         from("direct:getUserDetails")
             .routeId(GET_USER_ROUTE_ID)
@@ -114,17 +107,18 @@ public class UserExposeRoute extends RouteBuilder {
             .choice()
                 .when(simple("${headers.fileType} == 'XML'"))
                     .log("XML FILE")
-                    .to("file:files/output?fileName=userdata.xml")
+                    .marshal().jacksonxml().transform(body().append("\n"))
+                    .to("file:files/output?fileName=userdata.xml&fileExist=Append")
                 .otherwise()
                     .log("CSV FILE")
                     .bean("userFileProcessor", "convertResponseObjectToBindyFormat")
                     .marshal()
                         .bindy(BindyType.Csv, UserDataCsvRecords.class)
-                    .to("file:files/output?fileName=userdata.csv")
+                    .to("file:files/output?fileName=userdata.csv&fileExist=Append")
             .end()
             .removeHeaders("*", HTTP_RESPONSE_CODE, CONTENT_TYPE);
 
-        from("direct:updateUserDetails")
+        from("activemq:user-update-encryptor-active-mq")
             .routeId(UPDATE_USER_ROUTE_ID)
             .onCompletion()
                 .log(LoggingLevel.DEBUG, "Update User Details request execution completed.")
